@@ -1,0 +1,132 @@
+# TrustLens
+
+TrustLens will help Telegram and WhatsApp users check suspicious text, images, videos, and voice notes. The current milestone is a deliberately small Telegram-to-GPT bot so the team can learn one boundary at a time.
+
+## MVP architecture
+
+```text
+Telegram / WhatsApp
+        |
+        v
+Channel adapters (receive and send messages)
+        |
+        v
+Fact-check workflow
+  1. extract text from message or media
+  2. identify the checkable claim
+  3. search only trusted sources
+  4. retrieve relevant evidence
+  5. ask the AI to produce a structured verdict
+        |
+        +--> PostgreSQL (users, checks, source records)
+        +--> pgvector (embeddings for retrieved evidence)
+        |
+        v
+Verified-card response in the user's preferred language
+```
+
+The service in `app/main.py` is the future entry point for webhook endpoints and internal workflow calls. Each channel adapter should translate a platform-specific message into one common internal format; the fact-check workflow should not need to know whether a message came from Telegram or WhatsApp.
+
+## Technology choices
+
+- **Python 3.11+**: approachable for a student team and well supported by AI, media, database, and bot libraries.
+- **pyTelegramBotAPI (current milestone)**: a lightweight Telegram client library. Long polling lets the bot run locally without exposing a public web address; move to webhooks when deploying.
+- **OpenAI Python SDK (current milestone)**: sends each text message through the Responses API and returns the response text. The code sets `store=False` and does not add web-search tools.
+- **FastAPI (when webhooks are added)**: a small, typed HTTP layer with automatic request validation and documentation. Add it when Telegram and WhatsApp need public webhook endpoints.
+- **WhatsApp Cloud API (later)**: Meta's official API, connected through a separate adapter so it cannot complicate the Telegram learning path.
+- **OpenAI API with structured JSON output (later)**: produces a verdict in a fixed schema, but must only summarize evidence retrieved by the system rather than invent sources.
+- **PostgreSQL + pgvector (later)**: use one database for user preferences, audit records, sources, and vector search. Add it only when checks need to be saved or evidence retrieval is real.
+- **Trusted-domain search (later)**: search results are filtered against a version-controlled allowlist before evidence reaches the model. Begin with a short list of primary sources and established fact-checkers.
+
+Avoid a separate queue, cache, microservices, or a standalone vector database until actual traffic makes one necessary.
+
+## Build order
+
+1. **Current step — Telegram text round trip:** receive a text message in Telegram, send it to GPT, and reply in the same Telegram chat.
+2. Define the claim, evidence, and verdict data models; save a check in PostgreSQL.
+3. Add trusted-source search and evidence retrieval for text claims.
+4. Add the AI verdict generator, citations, language preference, and verified-card formatting.
+5. Add media extraction (OCR, transcription, video frames), then WhatsApp.
+
+This order makes it possible to test and understand each boundary before the next one is added.
+
+## Current milestone: Telegram → GPT → reply
+
+```text
+Telegram user
+     |
+     v
+Receive text message
+     |
+     v
+Send text to GPT
+     |
+     v
+Reply in the same Telegram chat
+```
+
+**Goal:** prove that one text message can travel through the full path from Telegram to GPT and back to the user.
+
+**Done when:** a user can send a normal text message to the development bot and receive GPT's response in the same chat.
+
+**Not included yet:** fact-check verdicts, web search, source links, user-language preferences, databases, images, voice notes, videos, WhatsApp, or shareable cards. Keeping these out of this milestone makes failures easier to understand: the problem will be either receiving Telegram messages, calling GPT, or sending the reply.
+
+## Milestone 2 progress: trusted-source search boundary
+
+The first Milestone 2 increment is complete: `config/trusted_domains.txt` is the only source-of-truth whitelist. The search adapter sends that list to Tavily as `include_domains`, then independently parses each returned URL and only accepts an exact configured domain or a genuine subdomain. For example, allowing `bbc.com` accepts `news.bbc.com`, but rejects `fake-bbc.com` and `bbc.com.scam.net`.
+
+The accepted `EvidenceSource` objects preserve each source's title, URL, actual hostname, and result snippet. They are not connected to Telegram or GPT yet. The next increment will send only these accepted objects to GPT using Structured Outputs (JSON Schema), and will return a deterministic `Unverified` result when none are found.
+
+To prepare the real search integration, add a `TAVILY_API_KEY` to `.env` and reinstall packages:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+## Run the current milestone
+
+1. Install Python 3.11 or newer.
+2. Create a Telegram bot with BotFather and copy its bot token.
+3. Create an OpenAI API key.
+4. Copy `.env.example` to `.env`, then fill in `TELEGRAM_BOT_TOKEN` and `OPENAI_API_KEY`. Do not share or commit this file.
+5. Create a virtual environment and install the two project packages. These commands deliberately do **not** activate the environment, so they work even when PowerShell blocks scripts:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+6. Start the bot:
+
+```powershell
+.\.venv\Scripts\python.exe -m app.main
+```
+
+Open your Telegram bot's chat and send a text message. It should reply in the same chat. Stop the bot with `Ctrl+C`.
+
+The first reply is intentionally **not a fact check**. It is only proof that the Telegram → GPT → Telegram path works.
+
+Run the automated check with:
+
+```powershell
+python -m unittest
+```
+
+## Files in this milestone
+
+- `app/main.py` — assembles the settings, GPT responder, and Telegram bot, then starts polling.
+- `app/__init__.py` — marks `app` as a Python package.
+- `app/settings.py` — loads `.env`, validates required settings, and provides a default model name.
+- `app/gpt_responder.py` — contains the single OpenAI Responses API call and its temporary development instructions.
+- `app/telegram_bot.py` — receives Telegram text messages and sends a responder's reply back to the same chat.
+- `config/trusted_domains.txt` — the one editable allowlist for fact-check evidence sources.
+- `app/trusted_domains.py` — reads the allowlist and strictly validates returned URL hostnames.
+- `app/evidence.py` — defines the title, URL, hostname, and snippet preserved for each accepted result.
+- `app/web_search.py` — calls Tavily with the allowlist and filters every result again locally.
+- `tests/test_settings.py` — checks configuration validation without using real tokens.
+- `tests/test_gpt_responder.py` — checks the GPT request shape with a fake client, so it never calls the API.
+- `tests/test_web_search.py` — tests trusted sources, lookalike rejection, multiple sources, and no evidence.
+- `pyproject.toml` — declares the project, Python requirement, and the two runtime packages.
+- `.env.example` — documents the required secret names and configurable model without storing values.
+- `.gitignore` — prevents virtual environments, caches, and secrets from entering Git.
+- `README.md` — records the architecture, choices, build order, and local commands.

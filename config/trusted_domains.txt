@@ -1,0 +1,11 @@
+# One domain per line. Subdomains of an entry are allowed.
+# Keep this list conservative: add a domain only after a team review.
+gov.sg
+mas.gov.sg
+moh.gov.sg
+police.gov.sg
+who.int
+reuters.com
+apnews.com
+channelnewsasia.com
+factcheck.afp.com

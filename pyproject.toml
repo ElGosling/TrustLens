@@ -1,0 +1,11 @@
+[project]
+name = "trustlens"
+version = "0.1.0"
+description = "A fact-checking bot foundation for Telegram and WhatsApp."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0,<3.0",
+    "pyTelegramBotAPI>=4.0,<5.0",
+    "tavily-python>=0.7,<1.0",
+]
