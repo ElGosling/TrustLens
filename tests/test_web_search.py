@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from app.trusted_domains import TrustedDomainPolicy
+from app.trusted_domains import TrustedDomainPolicy, TrustedSource
 from app.web_search import TrustedWebSearch
 
 
@@ -15,9 +15,22 @@ class FakeSearchClient:
         return {"results": self.results}
 
 
+def source(domain: str, include_subdomains: bool = True) -> TrustedSource:
+    """Make a small reviewed source fixture for tests that do not read TOML."""
+    return TrustedSource(
+        id=domain.replace(".", "-"),
+        name=domain,
+        domain=domain,
+        include_subdomains=include_subdomains,
+        category="test",
+        tier=2,
+        notes="Test source.",
+    )
+
+
 class TrustedWebSearchTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.policy = TrustedDomainPolicy(("bbc.com", "who.int"))
+        self.policy = TrustedDomainPolicy((source("bbc.com"), source("who.int")))
 
     def test_trusted_subdomain_is_accepted_but_lookalikes_are_rejected(self) -> None:
         client = FakeSearchClient(
@@ -53,18 +66,25 @@ class TrustedWebSearchTests(unittest.TestCase):
         self.assertEqual(client.arguments["include_domains"], ["bbc.com", "who.int"])
 
     def test_no_useful_evidence_found_returns_an_empty_list(self) -> None:
-        client = FakeSearchClient([])
-
-        evidence = TrustedWebSearch(self.policy, client).search("Unknown claim")
+        evidence = TrustedWebSearch(self.policy, FakeSearchClient([])).search("Unknown claim")
 
         self.assertEqual(evidence, [])
 
 
-class TrustedDomainConfigTests(unittest.TestCase):
-    def test_domain_file_loads_one_domain_per_line(self) -> None:
-        config_path = Path(__file__).parents[1] / "config" / "trusted_domains.txt"
+class TrustedSourceConfigTests(unittest.TestCase):
+    def test_source_registry_documents_the_government_umbrella(self) -> None:
+        config_path = Path(__file__).parents[1] / "config" / "trusted_sources.toml"
 
-        policy = TrustedDomainPolicy.from_file(config_path)
+        policy = TrustedDomainPolicy.from_toml(config_path)
+        government = next(item for item in policy.sources if item.id == "singapore-government")
 
         self.assertIn("gov.sg", policy.domains)
-        self.assertIn("reuters.com", policy.domains)
+        self.assertTrue(policy.is_trusted_url("https://www.moh.gov.sg/health-advisories"))
+        self.assertIn("moh.gov.sg", government.notes)
+        self.assertIn("channelnewsasia.com", policy.domains)
+
+    def test_source_can_disallow_unreviewed_subdomains(self) -> None:
+        policy = TrustedDomainPolicy((source("factcheck.afp.com", include_subdomains=False),))
+
+        self.assertTrue(policy.is_trusted_url("https://factcheck.afp.com/article"))
+        self.assertFalse(policy.is_trusted_url("https://regional.factcheck.afp.com/article"))

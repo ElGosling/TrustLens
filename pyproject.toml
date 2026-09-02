@@ -9,3 +9,5 @@ dependencies = [
     "pyTelegramBotAPI>=4.0,<5.0",
     "tavily-python>=0.7,<1.0",
 ]
+[tool.setuptools.packages.find]
+include = ["app*"]

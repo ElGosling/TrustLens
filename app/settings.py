@@ -31,6 +31,7 @@ class Settings:
 
     telegram_bot_token: str
     openai_api_key: str
+    tavily_api_key: str
     openai_model: str
 
     @classmethod
@@ -42,7 +43,7 @@ class Settings:
 
         missing = [
             name
-            for name in ("TELEGRAM_BOT_TOKEN", "OPENAI_API_KEY")
+            for name in ("TELEGRAM_BOT_TOKEN", "OPENAI_API_KEY", "TAVILY_API_KEY")
             if not values.get(name, "").strip()
         ]
         if missing:
@@ -52,6 +53,7 @@ class Settings:
         return cls(
             telegram_bot_token=values["TELEGRAM_BOT_TOKEN"].strip(),
             openai_api_key=values["OPENAI_API_KEY"].strip(),
+            tavily_api_key=values["TAVILY_API_KEY"].strip(),
             openai_model=values.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip()
             or DEFAULT_OPENAI_MODEL,
         )

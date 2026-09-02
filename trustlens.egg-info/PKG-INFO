@@ -6,6 +6,7 @@ Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 Requires-Dist: openai<3.0,>=1.0
 Requires-Dist: pyTelegramBotAPI<5.0,>=4.0
+Requires-Dist: tavily-python<1.0,>=0.7
 
 # TrustLens
 
@@ -80,6 +81,28 @@ Reply in the same Telegram chat
 
 **Not included yet:** fact-check verdicts, web search, source links, user-language preferences, databases, images, voice notes, videos, WhatsApp, or shareable cards. Keeping these out of this milestone makes failures easier to understand: the problem will be either receiving Telegram messages, calling GPT, or sending the reply.
 
+## Milestone 2 progress: trusted-source search boundary
+
+The first Milestone 2 increment is complete: `config/trusted_domains.txt` is the only source-of-truth whitelist. The search adapter sends that list to Tavily as `include_domains`, then independently parses each returned URL and only accepts an exact configured domain or a genuine subdomain. For example, allowing `bbc.com` accepts `news.bbc.com`, but rejects `fake-bbc.com` and `bbc.com.scam.net`.
+
+The accepted `EvidenceSource` objects preserve each source's title, URL, actual hostname, and result snippet. They are not connected to Telegram or GPT yet. The next increment will send only these accepted objects to GPT using Structured Outputs (JSON Schema), and will return a deterministic `Unverified` result when none are found.
+
+To prepare the real search integration, add a `TAVILY_API_KEY` to `.env` and reinstall packages:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+```
+
+## Text fact-checking workflow
+
+This milestone keeps Telegram text input but changes the reply from general chat to evidence-based fact checking:
+
+```text
+Telegram text -> trusted-domain search -> local URL validation -> GPT verdict -> cited Telegram reply
+```
+
+`config/trusted_domains.txt` is the single allowlist. `FactCheckService` returns `Unverified` without calling GPT when no approved evidence is found. When evidence is found, GPT receives only numbered claim evidence and returns source IDs; Python maps those IDs back to the original validated URLs before replying.
+
 ## Run the current milestone
 
 1. Install Python 3.11 or newer.
@@ -106,7 +129,7 @@ The first reply is intentionally **not a fact check**. It is only proof that the
 Run the automated check with:
 
 ```powershell
-python -m unittest
+.\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
 ## Files in this milestone
@@ -116,8 +139,13 @@ python -m unittest
 - `app/settings.py` — loads `.env`, validates required settings, and provides a default model name.
 - `app/gpt_responder.py` — contains the single OpenAI Responses API call and its temporary development instructions.
 - `app/telegram_bot.py` — receives Telegram text messages and sends a responder's reply back to the same chat.
+- `config/trusted_domains.txt` — the one editable allowlist for fact-check evidence sources.
+- `app/trusted_domains.py` — reads the allowlist and strictly validates returned URL hostnames.
+- `app/evidence.py` — defines the title, URL, hostname, and snippet preserved for each accepted result.
+- `app/web_search.py` — calls Tavily with the allowlist and filters every result again locally.
 - `tests/test_settings.py` — checks configuration validation without using real tokens.
 - `tests/test_gpt_responder.py` — checks the GPT request shape with a fake client, so it never calls the API.
+- `tests/test_web_search.py` — tests trusted sources, lookalike rejection, multiple sources, and no evidence.
 - `pyproject.toml` — declares the project, Python requirement, and the two runtime packages.
 - `.env.example` — documents the required secret names and configurable model without storing values.
 - `.gitignore` — prevents virtual environments, caches, and secrets from entering Git.

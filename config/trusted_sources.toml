@@ -1,0 +1,167 @@
+# TrustLens source registry. Add or remove sources here; do not edit search code.
+# `tier` and `notes` document curation decisions only in this milestone. They do
+# not change the GPT prompt, verdict, confidence, or search ranking.
+
+version = 1
+
+[[sources]]
+id = "singapore-government"
+name = "Singapore Government"
+domain = "gov.sg"
+include_subdomains = true
+category = "government"
+tier = 1
+notes = "Umbrella for official Singapore Government agencies and statutory boards, including moh.gov.sg, mha.gov.sg, mas.gov.sg, police.gov.sg, nea.gov.sg, sfa.gov.sg, singstat.gov.sg, parliament.gov.sg, eld.gov.sg, and data.gov.sg. All gov.sg paths are enabled."
+
+[[sources]]
+id = "cna"
+name = "CNA"
+domain = "channelnewsasia.com"
+include_subdomains = true
+category = "singapore_news"
+tier = 2
+notes = "Whole domain is enabled for the first broad news policy, including Singapore reporting. A future stricter policy can limit this to paths such as /singapore after sample URLs are reviewed."
+
+[[sources]]
+id = "straits-times"
+name = "The Straits Times"
+domain = "straitstimes.com"
+include_subdomains = true
+category = "singapore_news"
+tier = 2
+notes = "Whole domain is enabled for reporting. Opinion, sponsored, and lifestyle content are not separated by the current hostname-only policy; review URL patterns before adding path rules later."
+
+[[sources]]
+id = "today"
+name = "TODAY"
+domain = "todayonline.com"
+include_subdomains = true
+category = "singapore_news"
+tier = 2
+notes = "Whole domain is enabled for Singapore reporting. Future path restrictions should be based on tested article URL patterns, not assumptions."
+
+[[sources]]
+id = "business-times"
+name = "The Business Times"
+domain = "businesstimes.com.sg"
+include_subdomains = true
+category = "singapore_news"
+tier = 2
+notes = "Whole domain is enabled for reporting, especially business and economic claims. Paywalls may mean some search snippets lack enough evidence."
+
+[[sources]]
+id = "reuters"
+name = "Reuters"
+domain = "reuters.com"
+include_subdomains = true
+category = "international_news"
+tier = 2
+notes = "Whole domain is enabled for international reporting. A future policy may separately identify Reuters Fact Check routes."
+
+[[sources]]
+id = "associated-press"
+name = "Associated Press"
+domain = "apnews.com"
+include_subdomains = true
+category = "international_news"
+tier = 2
+notes = "Whole domain is enabled for international reporting. A future policy may separately identify AP Fact Check routes."
+
+[[sources]]
+id = "bbc"
+name = "BBC News"
+domain = "bbc.com"
+include_subdomains = true
+category = "international_news"
+tier = 2
+notes = "Whole domain is enabled for international reporting. Use primary Singapore sources for local policy or agency claims when available."
+
+[[sources]]
+id = "afp-fact-check"
+name = "AFP Fact Check"
+domain = "factcheck.afp.com"
+include_subdomains = false
+category = "fact_checking"
+tier = 2
+notes = "Dedicated AFP fact-checking site. It is intentionally narrower than the entire AFP domain."
+
+[[sources]]
+id = "full-fact"
+name = "Full Fact"
+domain = "fullfact.org"
+include_subdomains = true
+category = "fact_checking"
+tier = 2
+notes = "Dedicated fact-checking organisation. Its checks are often UK-focused, so use only when relevant to the submitted claim."
+
+[[sources]]
+id = "factcheck-org"
+name = "FactCheck.org"
+domain = "factcheck.org"
+include_subdomains = true
+category = "fact_checking"
+tier = 2
+notes = "Dedicated fact-checking organisation. Its coverage is often US-focused, so use only when relevant to the submitted claim."
+
+[[sources]]
+id = "politifact"
+name = "PolitiFact"
+domain = "politifact.com"
+include_subdomains = true
+category = "fact_checking"
+tier = 2
+notes = "Dedicated fact-checking organisation. Its coverage is often US-focused, so use only when relevant to the submitted claim."
+
+[[sources]]
+id = "world-health-organization"
+name = "World Health Organization"
+domain = "who.int"
+include_subdomains = true
+category = "health_science"
+tier = 1
+notes = "Global public-health authority. Singapore-specific health guidance should still be cross-referenced with the relevant gov.sg agency."
+
+[[sources]]
+id = "cochrane"
+name = "Cochrane"
+domain = "cochrane.org"
+include_subdomains = true
+category = "health_science"
+tier = 1
+notes = "Systematic-review evidence for health claims. It may not cover time-sensitive local policy questions."
+
+[[sources]]
+id = "new-england-journal-of-medicine"
+name = "New England Journal of Medicine"
+domain = "nejm.org"
+include_subdomains = true
+category = "health_science"
+tier = 2
+notes = "Peer-reviewed medical research and analysis. A single study is not automatically a settled conclusion."
+
+[[sources]]
+id = "lancet"
+name = "The Lancet"
+domain = "thelancet.com"
+include_subdomains = true
+category = "health_science"
+tier = 2
+notes = "Peer-reviewed medical research and analysis. A single study is not automatically a settled conclusion."
+
+[[sources]]
+id = "nature"
+name = "Nature"
+domain = "nature.com"
+include_subdomains = true
+category = "health_science"
+tier = 2
+notes = "Peer-reviewed research and science reporting. Claims should be assessed in the context of the underlying study and wider evidence."
+
+[[sources]]
+id = "science"
+name = "Science"
+domain = "science.org"
+include_subdomains = true
+category = "health_science"
+tier = 2
+notes = "Peer-reviewed research and science reporting. Claims should be assessed in the context of the underlying study and wider evidence."

@@ -13,7 +13,7 @@ def create_bot(token: str, responder: TextResponder):
     """Create a Telegram bot that accepts text and replies in the same chat."""
     import telebot
 
-    bot = telebot.TeleBot(token)
+    bot = telebot.TeleBot(token, parse_mode="HTML")
 
     @bot.message_handler(content_types=["text"])
     def handle_text(message) -> None:
