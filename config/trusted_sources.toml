@@ -86,6 +86,42 @@ tier = 2
 notes = "Dedicated AFP fact-checking site. It is intentionally narrower than the entire AFP domain."
 
 [[sources]]
+id = "ye-official-tour"
+name = "Ye Official Tour"
+domain = "tour.yeezy.com"
+include_subdomains = false
+category = "primary_event_source"
+tier = 1
+notes = "Official Ye tour site. Its 2026 tour listing includes the Jakarta Gelora Bung Karno concert on 24 October 2026. Keep this narrowly scoped to the tour subdomain."
+
+[[sources]]
+id = "ye-jakarta-ticketing"
+name = "YE Jakarta Official Ticketing"
+domain = "yejakarta.com"
+include_subdomains = true
+category = "primary_event_source"
+tier = 1
+notes = "Official ticketing site for YE Live in Jakarta, presented by Raw Vision Collective. Its ticket terms identify yejakarta.com and appointed platforms as official ticket sellers."
+
+[[sources]]
+id = "pokemon-official"
+name = "The Pokemon Company"
+domain = "pokemon.com"
+include_subdomains = true
+category = "primary_event_source"
+tier = 1
+notes = "Official Pokemon Company event and Championship Series site. It lists Singapore EXPO as the location for the 2027 Pokemon World Championships."
+
+[[sources]]
+id = "pokemon-official-asia-press"
+name = "The Pokemon Company Official Asia Press Site"
+domain = "portal-pokemon.com"
+include_subdomains = true
+category = "primary_event_source"
+tier = 1
+notes = "Official Pokemon Company Asia press site. Its 2026 announcement states that the 2027 Pokemon World Championships will take place in Singapore."
+
+[[sources]]
 id = "full-fact"
 name = "Full Fact"
 domain = "fullfact.org"

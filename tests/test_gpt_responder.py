@@ -51,3 +51,27 @@ class GPTResponderTests(unittest.TestCase):
             "uniqueItems",
             responses.arguments["text"]["format"]["schema"]["properties"]["source_ids"],
         )
+
+    def test_unverified_result_cannot_have_high_confidence(self) -> None:
+        class UnverifiedResponses:
+            def create(self, **kwargs):
+                return SimpleNamespace(
+                    output_text=json.dumps(
+                        {
+                            "verdict": "Unverified",
+                            "confidence": 98,
+                            "explanation": "The evidence does not confirm the claim. More direct evidence is needed.",
+                            "source_ids": [],
+                        }
+                    )
+                )
+
+        responder = GPTResponder(
+            model="test-model", client=SimpleNamespace(responses=UnverifiedResponses())
+        )
+        source = EvidenceSource("Source", "https://www.gov.sg/page", "www.gov.sg", "Evidence")
+
+        result = responder.check_claim("A claim", [source])
+
+        self.assertEqual(result.verdict, Verdict.UNVERIFIED)
+        self.assertEqual(result.confidence, 49)
