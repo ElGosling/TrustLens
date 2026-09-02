@@ -49,14 +49,22 @@ class FactCheckService:
         self.article_fetcher = article_fetcher
 
     def answer(self, user_text: str) -> str:
-        """Route forwarded URLs separately while keeping plain text on the existing path."""
+        """Return the Telegram-ready card for one message."""
+        return format_fact_check_for_telegram(self.check_message(user_text))
+
+    def check_message(self, user_text: str) -> FactCheckResult:
+        """Route forwarded URLs separately while keeping plain text on the existing path.
+
+        The adapter needs the result object, not only the rendered card, so the
+        verdict and its sources can be stored alongside the query.
+        """
         if not parse_message(user_text).urls:
-            return format_fact_check_for_telegram(self.check(user_text))
+            return self.check(user_text)
 
         routed = route_message(user_text, self._require_policy())
         if routed.kind is MessageKind.TRUSTED_URL:
-            return format_fact_check_for_telegram(self.check_trusted_url(routed))
-        return format_fact_check_for_telegram(self.check_untrusted_url(routed))
+            return self.check_trusted_url(routed)
+        return self.check_untrusted_url(routed)
 
     def check(self, claim: str) -> FactCheckResult:
         """Search first; never ask GPT for a sourced verdict with no evidence."""

@@ -1,21 +1,22 @@
-"""Run TrustLens' Telegram text fact-checking milestone."""
-
 from pathlib import Path
 
 from app.article_fetcher import create_tavily_article_fetcher
 from app.fact_check import FactCheckService
 from app.gpt_responder import GPTResponder
 from app.settings import Settings
-from app.telegram_bot import create_bot
+from app.storage import TrustLensStore
+from app.telegram_bot import create_bot, register_commands
 from app.trusted_domains import TrustedDomainPolicy
 from app.web_search import create_tavily_search
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def run() -> None:
     """Load configuration, build the fact-check workflow, and start polling."""
     _validate_trusted_domains_module()
     settings = Settings.from_environment()
-    source_file = Path(__file__).resolve().parents[1] / "config" / "trusted_sources.toml"
+    source_file = PROJECT_ROOT / "config" / "trusted_sources.toml"
     policy = TrustedDomainPolicy.from_toml(source_file)
     searcher = create_tavily_search(api_key=settings.tavily_api_key, policy=policy)
     article_fetcher = create_tavily_article_fetcher(
@@ -28,14 +29,24 @@ def run() -> None:
         policy=policy,
         article_fetcher=article_fetcher,
     )
-    bot = create_bot(token=settings.telegram_bot_token, responder=fact_checker)
+    store = TrustLensStore(_database_path(settings.database_path))
+    bot = create_bot(
+        token=settings.telegram_bot_token,
+        responder=fact_checker,
+        store=store,
+        quiz_question_count=settings.quiz_question_count,
+    )
 
     # Clear any webhook so long polling works; avoids 409 if a webhook was set earlier.
     bot.delete_webhook(drop_pending_updates=True)
+    register_commands(bot)
 
-    print("TrustLens bot is running. Send it a text claim in Telegram.")
+    print(f"Storing checks and quiz results in {store.path}")
+    print("TrustLens bot is running. Send it a text claim in Telegram, or /quiz.")
     try:
         bot.infinity_polling(skip_pending=True)
+    except KeyboardInterrupt:
+        print("\nStopping TrustLens.")
     except Exception as error:
         if _is_telegram_conflict(error):
             print(
@@ -47,6 +58,17 @@ def run() -> None:
             )
             raise SystemExit(1) from error
         raise
+    finally:
+        quiz = getattr(bot, "trustlens_quiz", None)
+        if quiz is not None:
+            quiz.shutdown()
+        store.close()
+
+
+def _database_path(configured: str) -> Path:
+    """Keep the SQLite file next to the project, whatever directory we ran from."""
+    path = Path(configured).expanduser()
+    return path if path.is_absolute() else PROJECT_ROOT / path
 
 
 def _is_telegram_conflict(error: Exception) -> bool:

@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Mapping
 
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
+DEFAULT_DATABASE_PATH = "data/trustlens.sqlite3"
+DEFAULT_QUIZ_QUESTION_COUNT = 5
 
 
 def load_local_env_file(path: Path = Path(".env")) -> None:
@@ -33,6 +35,8 @@ class Settings:
     openai_api_key: str
     tavily_api_key: str
     openai_model: str
+    database_path: str = DEFAULT_DATABASE_PATH
+    quiz_question_count: int = DEFAULT_QUIZ_QUESTION_COUNT
 
     @classmethod
     def from_environment(cls, values: Mapping[str, str] | None = None) -> "Settings":
@@ -56,4 +60,18 @@ class Settings:
             tavily_api_key=values["TAVILY_API_KEY"].strip(),
             openai_model=values.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL).strip()
             or DEFAULT_OPENAI_MODEL,
+            database_path=values.get("TRUSTLENS_DB_PATH", "").strip()
+            or DEFAULT_DATABASE_PATH,
+            quiz_question_count=_read_question_count(values),
         )
+
+
+def _read_question_count(values: Mapping[str, str]) -> int:
+    """Keep the quiz between one question and Telegram's practical patience."""
+    raw = values.get("TRUSTLENS_QUIZ_QUESTIONS", "").strip()
+    if not raw:
+        return DEFAULT_QUIZ_QUESTION_COUNT
+    try:
+        return max(1, min(int(raw), 10))
+    except ValueError:
+        return DEFAULT_QUIZ_QUESTION_COUNT

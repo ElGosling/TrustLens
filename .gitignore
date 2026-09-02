@@ -6,3 +6,6 @@ __pycache__/
 
 # Local configuration and secrets
 .env
+
+# Local SQLite database of checks and quiz results
+data/
