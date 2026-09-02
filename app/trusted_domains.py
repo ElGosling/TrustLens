@@ -3,7 +3,17 @@
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+from typing import AbstractSet
 from urllib.parse import urlsplit
+
+OFFICIAL_NEWS_CATEGORIES = frozenset(
+    {
+        "government",
+        "singapore_news",
+        "international_news",
+        "fact_checking",
+    }
+)
 
 
 def normalise_hostname(hostname: str) -> str:
@@ -43,6 +53,39 @@ class TrustedDomainPolicy:
     def domains(self) -> tuple[str, ...]:
         """Return the search-provider domain filters in registry order."""
         return tuple(dict.fromkeys(source.domain for source in self.sources))
+
+    def domains_for_categories(self, categories: AbstractSet[str]) -> tuple[str, ...]:
+        """Return unique domains whose registry category is in ``categories``."""
+        return tuple(
+            dict.fromkeys(
+                source.domain for source in self.sources if source.category in categories
+            )
+        )
+
+    def matching_sources_for_claim_terms(self, terms: AbstractSet[str]) -> tuple[TrustedSource, ...]:
+        """Return primary-event sources whose registry id overlaps claim terms."""
+        if not terms:
+            return ()
+        matches: list[TrustedSource] = []
+        for source in self.sources:
+            if source.category != "primary_event_source":
+                continue
+            source_terms = {
+                part for part in source.id.replace("-", " ").split() if part != "official"
+            }
+            if source_terms & terms:
+                matches.append(source)
+        return tuple(matches)
+
+    def is_official_news_url(self, url: str) -> bool:
+        """Accept only government, newsroom, and fact-checking registry entries."""
+        hostname = self.hostname_from_url(url)
+        if hostname is None:
+            return False
+        return any(
+            source.matches_hostname(hostname) and source.category in OFFICIAL_NEWS_CATEGORIES
+            for source in self.sources
+        )
 
     @classmethod
     def from_toml(cls, path: Path) -> "TrustedDomainPolicy":

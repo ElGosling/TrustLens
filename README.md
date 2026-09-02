@@ -105,7 +105,7 @@ Telegram text -> trusted-domain search -> local URL validation -> GPT verdict ->
 1. Install Python 3.11 or newer.
 2. Create a Telegram bot with BotFather and copy its bot token.
 3. Create an OpenAI API key.
-4. Copy `.env.example` to `.env`, then fill in `TELEGRAM_BOT_TOKEN` and `OPENAI_API_KEY`. Do not share or commit this file.
+4. Copy `.env.example` to `.env`, then fill in `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `TAVILY_API_KEY`. Do not share or commit this file.
 5. Create a virtual environment and install the two project packages. These commands deliberately do **not** activate the environment, so they work even when PowerShell blocks scripts:
 
 ```powershell
@@ -119,9 +119,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m app.main
 ```
 
-Open your Telegram bot's chat and send a text message. It should reply in the same chat. Stop the bot with `Ctrl+C`.
-
-The first reply is intentionally **not a fact check**. It is only proof that the Telegram → GPT → Telegram path works.
+Open your Telegram bot's chat and send a text message or forwarded link. It should reply in the same chat. Stop the bot with `Ctrl+C`.
 
 Run the automated check with:
 
@@ -129,26 +127,117 @@ Run the automated check with:
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-## Files in this milestone
+## Application modules (`app/`)
 
-### Current source-registry files
+Every Python module under `app/` and what it does. Read these in roughly this order when onboarding.
 
-- `config/trusted_sources.toml` is the reviewed source registry, with categories, tiers, scope notes, and domains.
-- `app/trusted_domains.py` reads that registry and strictly validates returned URL hostnames.
+### Entry point
 
-- `app/main.py` — assembles the settings, GPT responder, and Telegram bot, then starts polling.
-- `app/__init__.py` — marks `app` as a Python package.
-- `app/settings.py` — loads `.env`, validates required settings, and provides a default model name.
-- `app/gpt_responder.py` — contains the single OpenAI Responses API call and its temporary development instructions.
-- `app/telegram_bot.py` — receives Telegram text messages and sends a responder's reply back to the same chat.
-- `config/trusted_sources.toml` — the one editable source registry for fact-check evidence.
-- `app/trusted_domains.py` — reads the allowlist and strictly validates returned URL hostnames.
-- `app/evidence.py` — defines the title, URL, hostname, and snippet preserved for each accepted result.
-- `app/web_search.py` — calls Tavily with the allowlist and filters every result again locally.
-- `tests/test_settings.py` — checks configuration validation without using real tokens.
-- `tests/test_gpt_responder.py` — checks the GPT request shape with a fake client, so it never calls the API.
-- `tests/test_web_search.py` — tests trusted sources, lookalike rejection, multiple sources, and no evidence.
-- `pyproject.toml` — declares the project, Python requirement, and the two runtime packages.
-- `.env.example` — documents the required secret names and configurable model without storing values.
-- `.gitignore` — prevents virtual environments, caches, and secrets from entering Git.
-- `README.md` — records the architecture, choices, build order, and local commands.
+| File | Purpose |
+|------|---------|
+| `main.py` | Loads settings and the trusted-source registry, wires search, article fetch, GPT, and the fact-check service, creates the Telegram bot, clears any webhook, and starts long polling. Also validates at startup that `trusted_domains.py` is not an outdated partial copy. |
+
+### Configuration
+
+| File | Purpose |
+|------|---------|
+| `settings.py` | Loads `.env`, validates required secrets (`TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`), and exposes the OpenAI model name with a sensible default. |
+
+### Telegram adapter
+
+| File | Purpose |
+|------|---------|
+| `telegram_bot.py` | Thin pyTelegramBotAPI wrapper. Registers a text handler, passes `message.text` to the fact-check responder, and replies in the same chat. Keeps Telegram-specific code separate from search and GPT logic. |
+
+### Message routing
+
+| File | Purpose |
+|------|---------|
+| `message_input.py` | Parses incoming text for HTTP(S) URLs and optional user notes. Routes each message as plain text, a trusted whitelisted URL, or an untrusted URL so the fact-check service can choose the right evidence path. |
+
+### Fact-check orchestration
+
+| File | Purpose |
+|------|---------|
+| `fact_check.py` | Central workflow coordinator. Plain text → trusted search → GPT verdict. Trusted URLs → fetch article (or search fallback) → optional corroboration → GPT. Untrusted URLs → extract claim from page → standard trusted search. Returns formatted Telegram replies without changing the plain-text path when no URL is present. |
+
+### Trusted sources and search
+
+| File | Purpose |
+|------|---------|
+| `trusted_domains.py` | Loads `config/trusted_sources.toml` and enforces hostname policy: exact domain or approved subdomain only. Provides helpers for official-news categories, primary-event domains, and URL trust checks used by search and fetch code. |
+| `web_search.py` | Tavily search adapter with defense in depth. Runs primary-event, trusted-domain, and web-wide official-news passes; filters results locally; deduplicates URLs; applies relevance rules. Exposes `search(claim)` for text claims and `search_for_url(url)` when direct article fetch fails. |
+| `search_queries.py` | Expands a user claim into multiple Tavily queries (entity hints, registry primary-event sources, Singapore-focused terms) so search is less dependent on the exact wording of the message. |
+| `url_search.py` | Builds URL-targeted search queries from a forwarded link (full URL, path slug, `site:domain` variants) and derives a checkable claim from search snippets when article extract is unavailable. |
+| `claim_terms.py` | Shared tokenisation for claims: strips generic words like “championship” and “hosting” so relevance checks focus on distinctive terms. Used by search filtering and query expansion. |
+
+### Article fetch (forwarded links)
+
+| File | Purpose |
+|------|---------|
+| `article_fetcher.py` | Reads a specific URL through Tavily `extract` when the user forwards a link. Returns title and body for trusted articles. Used as primary evidence before corroborating search runs. |
+| `url_claims.py` | Converts a fetched article into an `EvidenceSource` and builds the claim string GPT should assess (from headline, lede, or the user’s accompanying note such as “Is this true?”). |
+
+### Data models
+
+| File | Purpose |
+|------|---------|
+| `evidence.py` | Defines `EvidenceSource`: title, URL, hostname, and snippet for each search or fetch result that passed local trusted-domain validation. |
+| `verdict.py` | Defines `Verdict` labels (`True`, `False`, `Misleading`, `Satire`, `Unverified`) and `FactCheckResult` (verdict, confidence, explanation, cited sources). |
+
+### AI and user-facing output
+
+| File | Purpose |
+|------|---------|
+| `gpt_responder.py` | Calls the OpenAI Responses API with structured JSON output. Sends only numbered evidence records; maps model-selected source IDs back to validated URLs; caps confidence for `Unverified` results. Does not browse or use background knowledge. |
+| `response_formatter.py` | Renders `FactCheckResult` as Telegram HTML: verdict symbol, confidence label, explanation, and clickable source links with untrusted text escaped. |
+
+### Debugging (temporary)
+
+| File | Purpose |
+|------|---------|
+| `fetch_debug.py` | Diagnostic logging for Straits Times URL fetches: direct HTTP status and body preview, plus Tavily extract metadata. Remove after paywall/JS-shell issues are resolved. |
+
+### Package marker
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | Marks `app` as a Python package. |
+
+### How the modules connect
+
+```text
+telegram_bot.py
+       |
+       v
+fact_check.py  <--- message_input.py (URL vs text routing)
+       |
+       +-- text claim -----> web_search.py ---> search_queries.py
+       |                         ^                  claim_terms.py
+       |                         |                  trusted_domains.py
+       |
+       +-- trusted URL ---> article_fetcher.py
+       |       | fail              |
+       |       v                   v
+       |   url_search.py ----> web_search.py.search_for_url()
+       |       |
+       |       +--> url_claims.py
+       |
+       +-- untrusted URL -> article_fetcher.py -> url_claims.py -> web_search.py
+       |
+       v
+gpt_responder.py  (uses evidence.py, verdict.py)
+       |
+       v
+response_formatter.py
+```
+
+`main.py` constructs all of the above. `settings.py` and `trusted_domains.py` are loaded first.
+
+## Other project files
+
+- `config/trusted_sources.toml` — reviewed source registry (domains, categories, tiers, scope notes).
+- `tests/` — unit tests for settings, search, GPT request shape, URL routing, and fact-check flows.
+- `pyproject.toml` — project metadata, Python version, and runtime dependencies.
+- `.env.example` — required secret names and configurable model without storing values.
+- `.gitignore` — excludes virtual environments, caches, secrets, and egg-info from Git.
