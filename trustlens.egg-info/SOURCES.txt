@@ -5,6 +5,7 @@ app/evidence.py
 app/fact_check.py
 app/gpt_responder.py
 app/main.py
+app/response_formatter.py
 app/settings.py
 app/telegram_bot.py
 app/trusted_domains.py

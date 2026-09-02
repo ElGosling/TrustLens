@@ -70,6 +70,45 @@ class TrustedWebSearchTests(unittest.TestCase):
 
         self.assertEqual(evidence, [])
 
+    def test_tracking_url_variants_are_returned_only_once(self) -> None:
+        client = FakeSearchClient(
+            [
+                {"title": "BBC", "url": "https://bbc.com/news/article", "content": "Evidence."},
+                {
+                    "title": "BBC duplicate",
+                    "url": "https://bbc.com/news/article?at_medium=RSS&at_campaign=rss",
+                    "content": "Duplicate evidence.",
+                },
+            ]
+        )
+
+        evidence = TrustedWebSearch(self.policy, client).search("A claim")
+
+        self.assertEqual(len(evidence), 1)
+        self.assertEqual(evidence[0].url, "https://bbc.com/news/article")
+
+    def test_topical_neighbours_are_rejected_when_a_claim_has_specific_terms(self) -> None:
+        client = FakeSearchClient(
+            [
+                {
+                    "title": "Singapore to host Dota 2 tournament",
+                    "url": "https://bbc.com/dota",
+                    "content": "Singapore will host The International.",
+                },
+                {
+                    "title": "Pokemon World Championships heading to Singapore",
+                    "url": "https://bbc.com/pokemon",
+                    "content": "Singapore will host the Pokemon World Championships in 2027.",
+                },
+            ]
+        )
+
+        evidence = TrustedWebSearch(self.policy, client).search(
+            "Singapore to host the next Pokemon championship"
+        )
+
+        self.assertEqual([item.url for item in evidence], ["https://bbc.com/pokemon"])
+
 
 class TrustedSourceConfigTests(unittest.TestCase):
     def test_source_registry_documents_the_government_umbrella(self) -> None:
@@ -82,6 +121,18 @@ class TrustedSourceConfigTests(unittest.TestCase):
         self.assertTrue(policy.is_trusted_url("https://www.moh.gov.sg/health-advisories"))
         self.assertIn("moh.gov.sg", government.notes)
         self.assertIn("channelnewsasia.com", policy.domains)
+
+    def test_event_sources_are_available_for_ticketing_claims(self) -> None:
+        config_path = Path(__file__).parents[1] / "config" / "trusted_sources.toml"
+
+        policy = TrustedDomainPolicy.from_toml(config_path)
+
+        self.assertTrue(policy.is_trusted_url("https://tour.yeezy.com/"))
+        self.assertTrue(policy.is_trusted_url("https://upperhouse.yejakarta.com/"))
+        self.assertTrue(policy.is_trusted_url("https://www.pokemon.com/us/play-pokemon/"))
+        self.assertTrue(
+            policy.is_trusted_url("https://asia-press.portal-pokemon.com/press-release/")
+        )
 
     def test_source_can_disallow_unreviewed_subdomains(self) -> None:
         policy = TrustedDomainPolicy((source("factcheck.afp.com", include_subdomains=False),))

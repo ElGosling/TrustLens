@@ -12,7 +12,9 @@ knowledge, do not browse, and do not invent sources or URLs. If the supplied
 evidence is missing, insufficient, or conflicting, choose Unverified. Choose
 True or False only when the evidence directly supports that conclusion. Return
 exactly two plain-language sentences in the explanation. Confidence is an
-integer from 0 to 100 representing confidence based on this evidence only."""
+integer from 0 to 100 representing confidence based on this evidence only.
+For Unverified, it must be from 0 to 49; it must never imply high confidence
+in a claim that the evidence cannot verify."""
 
 
 class GPTResponder:
@@ -93,6 +95,8 @@ class GPTResponder:
 
         if isinstance(confidence, bool) or not isinstance(confidence, int):
             raise ValueError("GPT returned a non-integer confidence score.")
+        if verdict is Verdict.UNVERIFIED:
+            confidence = min(confidence, 49)
         if not isinstance(source_ids, list) or len(set(source_ids)) != len(source_ids):
             raise ValueError("GPT returned invalid source IDs.")
 
