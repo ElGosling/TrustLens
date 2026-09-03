@@ -262,11 +262,19 @@ def format_escalation_summary(
             f"in the last {window_days} days."
         )
     counts = {priority: 0 for priority in Priority}
+    lines = [
+        f"Escalated <b>{len(clusters)}</b> recurring cluster(s) to a harm brief.",
+        "",
+    ]
     for cluster in clusters:
         counts[cluster.priority] += 1
-    return "\n".join(
+        noun = "user" if cluster.unique_users == 1 else "users"
+        lines.append(
+            f"• {cluster.priority.value} · {TECHNIQUE_LABELS[cluster.technique]} — "
+            f"<b>{cluster.unique_users}</b> unique {noun} reported"
+        )
+    lines.extend(
         [
-            f"Escalated <b>{len(clusters)}</b> recurring cluster(s) to a harm brief.",
             "",
             (
                 f"CRITICAL {counts[Priority.CRITICAL]} · "
@@ -277,6 +285,7 @@ def format_escalation_summary(
             f"<code>{escape(str(path))}</code>",
         ]
     )
+    return "\n".join(lines)
 
 
 def main() -> None:

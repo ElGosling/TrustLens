@@ -280,6 +280,7 @@ class BriefOutputTests(EscalationStoreTestCase):
         self.assertNotIn("Ah Ma", body)
         summary = format_escalation_summary(path, clusters, window_days=14)
         self.assertIn("CRITICAL 1", summary)
+        self.assertIn("<b>2</b> unique users reported", summary)
         self.assertNotIn(text, summary)
 
     def test_an_empty_run_still_writes_a_header_only_brief(self) -> None:
