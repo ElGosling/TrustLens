@@ -1,6 +1,6 @@
 import tempfile
 import unittest
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from app.storage import TrustLensStore
@@ -192,6 +192,76 @@ class StatsTests(StoreTestCase):
 
     def test_accuracy_is_zero_before_any_quiz_is_answered(self) -> None:
         self.assertEqual(self.store.user_stats(7).accuracy, 0)
+
+
+class EscalationStorageTests(StoreTestCase):
+    def test_checks_for_escalation_are_global_and_skip_errors(self) -> None:
+        since = datetime(2026, 8, 20, tzinfo=timezone.utc)
+        self.store.record_check(
+            user_id=1,
+            input_text="parcel held pay customs fee now",
+            verdict="False",
+            confidence=88,
+            technique="scam_link",
+            created_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        )
+        self.store.record_check(
+            user_id=2,
+            input_text="a failed check that should be ignored",
+            error="boom",
+            created_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        )
+        self.store.record_check(
+            user_id=3,
+            input_text="old false claim that is outside the window",
+            verdict="False",
+            confidence=90,
+            technique="scam_link",
+            created_at=datetime(2026, 8, 1, tzinfo=timezone.utc),
+        )
+
+        found = self.store.checks_for_escalation(
+            since=since, verdicts=("False", "Misleading", "Unverified"), min_confidence=40
+        )
+
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].user_id, 1)
+
+    def test_quiz_misses_map_personal_wrong_answers_to_check_ids(self) -> None:
+        check_id = self.store.record_check(
+            user_id=7, input_text="a false parcel scam claim", verdict="False"
+        )
+        session_id = self.store.create_quiz_session(7, 7, question_count=2, personalised=True)
+        first = self.store.record_question(
+            session_id=session_id,
+            position=0,
+            question="q1",
+            options=["a", "b"],
+            correct_option_id=0,
+            explanation="e",
+            technique="scam_link",
+            origin="personal",
+            poll_id="poll-miss-1",
+            check_id=check_id,
+        )
+        second = self.store.record_question(
+            session_id=session_id,
+            position=1,
+            question="q2",
+            options=["a", "b"],
+            correct_option_id=0,
+            explanation="e",
+            technique="scam_link",
+            origin="personal",
+            poll_id="poll-miss-2",
+            check_id=check_id,
+        )
+        self.store.record_answer(first, session_id, 7, 1, False)
+        self.store.record_answer(second, session_id, 8, 1, False)
+
+        misses = self.store.quiz_misses_by_check_id()
+
+        self.assertEqual(set(misses[check_id]), {7, 8})
 
 
 if __name__ == "__main__":

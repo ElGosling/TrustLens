@@ -8,6 +8,9 @@ from typing import Mapping
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
 DEFAULT_DATABASE_PATH = "data/trustlens.sqlite3"
 DEFAULT_QUIZ_QUESTION_COUNT = 5
+DEFAULT_ESCALATE_WINDOW_DAYS = 14
+DEFAULT_ESCALATE_MIN_UNIQUE_USERS = 2
+DEFAULT_ESCALATE_OUTPUT_DIR = "data/escalations"
 
 
 def load_local_env_file(path: Path = Path(".env")) -> None:
@@ -37,6 +40,9 @@ class Settings:
     openai_model: str
     database_path: str = DEFAULT_DATABASE_PATH
     quiz_question_count: int = DEFAULT_QUIZ_QUESTION_COUNT
+    escalate_window_days: int = DEFAULT_ESCALATE_WINDOW_DAYS
+    escalate_min_unique_users: int = DEFAULT_ESCALATE_MIN_UNIQUE_USERS
+    escalate_output_dir: str = DEFAULT_ESCALATE_OUTPUT_DIR
 
     @classmethod
     def from_environment(cls, values: Mapping[str, str] | None = None) -> "Settings":
@@ -63,15 +69,47 @@ class Settings:
             database_path=values.get("TRUSTLENS_DB_PATH", "").strip()
             or DEFAULT_DATABASE_PATH,
             quiz_question_count=_read_question_count(values),
+            escalate_window_days=_read_bounded_int(
+                values,
+                "TRUSTLENS_ESCALATE_WINDOW_DAYS",
+                default=DEFAULT_ESCALATE_WINDOW_DAYS,
+                minimum=1,
+                maximum=365,
+            ),
+            escalate_min_unique_users=_read_bounded_int(
+                values,
+                "TRUSTLENS_ESCALATE_MIN_USERS",
+                default=DEFAULT_ESCALATE_MIN_UNIQUE_USERS,
+                minimum=1,
+                maximum=100,
+            ),
+            escalate_output_dir=values.get("TRUSTLENS_ESCALATE_DIR", "").strip()
+            or DEFAULT_ESCALATE_OUTPUT_DIR,
         )
 
 
 def _read_question_count(values: Mapping[str, str]) -> int:
     """Keep the quiz between one question and Telegram's practical patience."""
-    raw = values.get("TRUSTLENS_QUIZ_QUESTIONS", "").strip()
+    return _read_bounded_int(
+        values,
+        "TRUSTLENS_QUIZ_QUESTIONS",
+        default=DEFAULT_QUIZ_QUESTION_COUNT,
+        minimum=1,
+        maximum=10,
+    )
+
+
+def _read_bounded_int(
+    values: Mapping[str, str],
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    raw = values.get(name, "").strip()
     if not raw:
-        return DEFAULT_QUIZ_QUESTION_COUNT
+        return default
     try:
-        return max(1, min(int(raw), 10))
+        return max(minimum, min(int(raw), maximum))
     except ValueError:
-        return DEFAULT_QUIZ_QUESTION_COUNT
+        return default

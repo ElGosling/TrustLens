@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from app.article_fetcher import create_tavily_article_fetcher
+from app.escalate import EscalationConfig
 from app.fact_check import FactCheckService
 from app.gpt_responder import GPTResponder
 from app.settings import Settings
@@ -35,6 +36,12 @@ def run() -> None:
         responder=fact_checker,
         store=store,
         quiz_question_count=settings.quiz_question_count,
+        escalation_config=EscalationConfig(
+            window_days=settings.escalate_window_days,
+            min_unique_users=settings.escalate_min_unique_users,
+            database_path=settings.database_path,
+            output_dir=settings.escalate_output_dir,
+        ),
     )
 
     # Clear any webhook so long polling works; avoids 409 if a webhook was set earlier.

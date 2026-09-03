@@ -3,6 +3,11 @@
 import time
 from typing import Protocol
 
+from app.escalate import (
+    EscalationConfig,
+    format_escalation_summary,
+    write_escalation_brief,
+)
 from app.literacy import TECHNIQUE_LABELS, Technique, classify_technique
 from app.message_input import MessageKind, parse_message, route_message
 from app.quiz import DEFAULT_QUESTION_COUNT
@@ -23,6 +28,7 @@ HELP_TEXT = "\n".join(
         "/quiz - a short recap quiz built from the claims you checked",
         "/quizstop - stop a quiz that is running",
         "/stats - your checks, quiz accuracy, and streak",
+        "/escalate - dump recurring scams and false claims to a brief",
         "/help - this message",
     ]
 )
@@ -31,6 +37,7 @@ BOT_COMMANDS = (
     ("quiz", "Recap quiz on what you have checked"),
     ("quizstop", "Stop the quiz that is running"),
     ("stats", "Your checks, accuracy, and streak"),
+    ("escalate", "Dump recurring scams to a harm brief"),
     ("help", "How to use TrustLens"),
 )
 
@@ -49,6 +56,7 @@ def create_bot(
     store: TrustLensStore | None = None,
     quiz_question_count: int = DEFAULT_QUESTION_COUNT,
     quiz_open_period: int = OPEN_PERIOD_SECONDS,
+    escalation_config: EscalationConfig | None = None,
 ):
     """Create a Telegram bot that checks claims, stores them, and runs quizzes."""
     import telebot
@@ -64,6 +72,7 @@ def create_bot(
         if store is not None
         else None
     )
+    escalation = escalation_config or EscalationConfig()
     bot.trustlens_store = store
     bot.trustlens_quiz = runner
 
@@ -106,6 +115,31 @@ def create_bot(
             return
         _remember_user(store, message)
         bot.reply_to(message, format_stats(store.user_stats(message.from_user.id)))
+
+    @bot.message_handler(commands=["escalate"])
+    def handle_escalate(message) -> None:
+        if store is None:
+            bot.reply_to(
+                message,
+                "Escalation is unavailable: no local database is configured.",
+            )
+            return
+        _remember_user(store, message)
+        try:
+            path, clusters = write_escalation_brief(store, escalation)
+        except Exception as error:
+            print(f"Could not write an escalation brief: {error}")
+            bot.reply_to(
+                message,
+                "TrustLens could not write the escalation brief. Please try again.",
+            )
+            return
+        bot.reply_to(
+            message,
+            format_escalation_summary(
+                path, clusters, window_days=escalation.window_days
+            ),
+        )
 
     @bot.message_handler(content_types=["text"], func=_is_not_command)
     def handle_text(message) -> None:

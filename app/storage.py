@@ -266,6 +266,7 @@ class TrustLensStore:
         reply_text: str | None = None,
         error: str | None = None,
         latency_ms: int | None = None,
+        created_at: datetime | None = None,
     ) -> int:
         """Store one incoming query and whatever TrustLens replied with."""
         with self._lock, self._connection:
@@ -293,7 +294,7 @@ class TrustLensStore:
                     reply_text,
                     error,
                     latency_ms,
-                    _now_text(),
+                    _timestamp_text(created_at) if created_at is not None else _now_text(),
                 ),
             )
             return int(cursor.lastrowid)
@@ -331,6 +332,53 @@ class TrustLensStore:
                 (user_id, limit),
             ).fetchall()
         return {row["technique"]: row["total"] for row in rows}
+
+    def checks_for_escalation(
+        self,
+        since: datetime,
+        verdicts: Sequence[str],
+        min_confidence: int,
+    ) -> list[StoredCheck]:
+        """Return recent successful checks that could be harmful, across all users."""
+        if not verdicts:
+            return []
+        placeholders = ",".join("?" * len(verdicts))
+        with self._lock:
+            rows = self._connection.execute(
+                f"""
+                SELECT * FROM checks
+                WHERE error IS NULL
+                  AND verdict IS NOT NULL
+                  AND confidence >= ?
+                  AND created_at >= ?
+                  AND verdict IN ({placeholders})
+                ORDER BY id ASC
+                """,
+                (min_confidence, _timestamp_text(since), *verdicts),
+            ).fetchall()
+        return [_check_from_row(row) for row in rows]
+
+    def quiz_misses_by_check_id(self) -> dict[int, tuple[int, ...]]:
+        """Map a stored check to the users who missed its personal recap question."""
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT q.check_id AS check_id, a.user_id AS user_id
+                FROM quiz_answers a
+                JOIN quiz_questions q ON q.id = a.question_id
+                WHERE a.is_correct = 0
+                  AND q.check_id IS NOT NULL
+                  AND q.origin = 'personal'
+                """
+            ).fetchall()
+        grouped: dict[int, list[int]] = {}
+        for row in rows:
+            check_id = int(row["check_id"])
+            user_id = int(row["user_id"])
+            seen = grouped.setdefault(check_id, [])
+            if user_id not in seen:
+                seen.append(user_id)
+        return {check_id: tuple(user_ids) for check_id, user_ids in grouped.items()}
 
     # ---------------------------------------------------------------- quizzes
 
@@ -634,7 +682,13 @@ class TrustLensStore:
 
 
 def _now_text() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return _timestamp_text(datetime.now(timezone.utc))
+
+
+def _timestamp_text(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="seconds")
 
 
 def _parse_day(value: str | None) -> date | None:
