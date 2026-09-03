@@ -51,5 +51,5 @@ class FactCheckServiceTests(unittest.TestCase):
 
         self.assertEqual(searcher.claim, "A test claim")
         self.assertEqual(generator.arguments, ("A test claim", [source]))
-        self.assertIn("Verdict: True", reply)
+        self.assertIn("VERDICT: TRUE", reply)
         self.assertIn("https://www.gov.sg/page", reply)

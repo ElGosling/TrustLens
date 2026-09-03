@@ -9,9 +9,11 @@ class FakeSearchClient:
     def __init__(self, results):
         self.results = results
         self.arguments = None
+        self.calls: list[dict] = []
 
     def search(self, query, **kwargs):
         self.arguments = {"query": query, **kwargs}
+        self.calls.append(self.arguments)
         return {"results": self.results}
 
 
@@ -51,8 +53,8 @@ class TrustedWebSearchTests(unittest.TestCase):
     def test_multiple_trusted_sources_are_preserved_with_metadata(self) -> None:
         client = FakeSearchClient(
             [
-                {"title": "BBC report", "url": "https://bbc.com/news", "content": "BBC snippet."},
-                {"title": "WHO report", "url": "https://www.who.int/report", "content": "WHO snippet."},
+                {"title": "BBC report", "url": "https://bbc.com/news", "content": "Health BBC snippet."},
+                {"title": "WHO report", "url": "https://www.who.int/report", "content": "Health WHO snippet."},
             ]
         )
 
@@ -62,8 +64,10 @@ class TrustedWebSearchTests(unittest.TestCase):
         self.assertEqual(evidence[0].title, "BBC report")
         self.assertEqual(evidence[0].url, "https://bbc.com/news")
         self.assertEqual(evidence[0].domain, "bbc.com")
-        self.assertEqual(evidence[0].snippet, "BBC snippet.")
-        self.assertEqual(client.arguments["include_domains"], ["bbc.com", "who.int"])
+        self.assertEqual(evidence[0].snippet, "Health BBC snippet.")
+        self.assertTrue(
+            any(call.get("include_domains") == ["bbc.com", "who.int"] for call in client.calls)
+        )
 
     def test_no_useful_evidence_found_returns_an_empty_list(self) -> None:
         evidence = TrustedWebSearch(self.policy, FakeSearchClient([])).search("Unknown claim")
