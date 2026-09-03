@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X Demo - TrustLens</title>
+  <link rel="stylesheet" href="../src/content/content.css">
+  <style>
+    body { margin: 0; background: #f5f5f4; color: #292524; font: 15px/1.5 system-ui, sans-serif; }
+    main { width: min(620px, calc(100% - 32px)); margin: 32px auto; }
+    h1 { font-size: 24px; }
+    article { position: relative; margin: 16px 0; padding: 20px 56px 20px 20px; border: 1px solid #d6d3d1; border-radius: 8px; background: white; }
+    article p { margin: 0; }
+    .author { margin-bottom: 8px; color: #78716c; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>X feed demo</h1>
+    <p>Local fixture for testing TrustLens post detection and badges.</p>
+    <article>
+      <div class="author">@example_news</div>
+      <div data-testid="tweetText">A claim from the first example post appears here.</div>
+    </article>
+    <article>
+      <div class="author">@sample_user</div>
+      <div data-testid="tweetText">A second claim is loaded so duplicate badges can be checked.</div>
+    </article>
+    <article>
+      <div class="author">@daily_updates</div>
+      <div data-testid="tweetText">A third example post gives the feed more realistic scrolling space.</div>
+    </article>
+    <article>
+      <div class="author">@world_report</div>
+      <div data-testid="tweetText">A fourth example claim is ready for TrustLens inspection.</div>
+    </article>
+    <article>
+      <div class="author">@science_notes</div>
+      <div data-testid="tweetText">A fifth example post demonstrates a longer feed.</div>
+    </article>
+    <article>
+      <div class="author">@community_news</div>
+      <div data-testid="tweetText">A sixth example claim appears further down the page.</div>
+    </article>
+    <article>
+      <div class="author">@fact_archive</div>
+      <div data-testid="tweetText">A seventh example post can be checked without leaving the demo.</div>
+    </article>
+    <article>
+      <div class="author">@local_voice</div>
+      <div data-testid="tweetText">An eighth example claim keeps the page scrollable.</div>
+    </article>
+    <article>
+      <div class="author">@public_square</div>
+      <div data-testid="tweetText">A ninth example post uses the same X-style structure.</div>
+    </article>
+    <article>
+      <div class="author">@open_source</div>
+      <div data-testid="tweetText">A tenth example claim completes the scrolling fixture.</div>
+    </article>
+  </main>
+  <script src="../src/content/content.js"></script>
+</body>
+</html>

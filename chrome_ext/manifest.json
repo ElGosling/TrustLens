@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "TrustLens",
+  "version": "0.1.0",
+  "description": "Shows credibility information for suspicious social media content.",
+  "permissions": [],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "https://www.facebook.com/*",
+    "https://x.com/*",
+    "https://www.tiktok.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.facebook.com/*",
+        "https://x.com/*",
+        "https://www.tiktok.com/*"
+      ],
+      "js": ["src/content/content.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "TrustLens"
+  }
+}
