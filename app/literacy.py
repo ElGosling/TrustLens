@@ -5,6 +5,12 @@ misconceptions and techniques that the user personally forwarded in". That needs
 two things this module provides: a small, fixed vocabulary of manipulation
 techniques, and a curated pool of questions tagged with those techniques so a
 recap can be assembled locally from one user's own history.
+
+The bank also includes a set of "is this legitimate or a scam?" questions built
+from dated, named Singapore Police Force and GovTech advisories rather than
+generic hypotheticals (see the source comments above each one in GENERAL_BANK).
+About half of those have "Legitimate" as the correct answer: a quiz that always
+answers "Scam" trains guessing, not judgement.
 """
 
 from dataclasses import dataclass
@@ -98,10 +104,12 @@ TECHNIQUE_KEYWORDS: tuple[tuple[Technique, tuple[str, ...]], ...] = (
     (
         Technique.SCAM_LINK,
         (
-            "otp", "one-time password", "parcel", "delivery fee", "customs",
+            "otp", "one-time password", "verification code", "parcel", "delivery fee",
+            "redelivery", "redeliver", "invalid address", "customs", "courier",
             "bank account", "paynow", "paylah", "refund", "prize", "lucky draw",
             "click here", "claim now", "verify your account", "gift card",
-            "investment opportunity", "guaranteed returns",
+            "investment opportunity", "guaranteed returns", "outstanding erp",
+            "erp charges", "cdc voucher", "gst voucher", "gstv", "singpost",
         ),
     ),
     (
@@ -109,7 +117,8 @@ TECHNIQUE_KEYWORDS: tuple[tuple[Technique, tuple[str, ...]], ...] = (
         (
             "ministry", "moh ", "mom ", "mha ", "iras", "cpf", "hdb", "singpass",
             "police", "spf ", "government", "official advisory", "circular",
-            "gov.sg", "authorities have",
+            "gov.sg", "authorities have", "lta ", "onemotoring", "outstanding fine",
+            "outstanding fines", "arrest warrant",
         ),
     ),
     (
@@ -370,6 +379,139 @@ GENERAL_BANK: tuple[BankQuestion, ...] = (
         explanation=(
             "Unverified means the evidence is not there yet, not that the claim is "
             "false. Treat it as a reason to wait rather than to forward."
+        ),
+    ),
+    # --- Is this message legitimate or a scam? -----------------------------
+    # Each question below is built from a dated, named Singapore Police Force
+    # or GovTech advisory, not a generic hypothetical. The message text is
+    # illustrative (any domain shown is invented for teaching, not a real
+    # scam site), but the pattern, the request, and the correct-channel fact
+    # are drawn from the source cited. Roughly half the answers are
+    # "Legitimate": a quiz that only ever answers "Scam" trains guessing,
+    # not judgement.
+    #   - SPF, phishing websites impersonating RedeemSG (17 Jan 2025)
+    #     police.gov.sg/media-hub/news/2025/01/20250117_police_advisory_on_phishing_websites_impersonating_redeemsg
+    #   - GovTech, "Which SMS links are scams and which are not?"
+    #     tech.gov.sg/technews/which-sms-links-are-scams-and-which-are-not/
+    #   - SPF, resurgence of LTA impersonation phishing (22 Jun 2026)
+    #     police.gov.sg/media-hub/news/2026/06/20260622_police_advisory_on_resurgence_of_phishing_scams_involving_the_impersonation
+    #   - SPF, WhatsApp messages impersonating SingPost (27 Mar 2026)
+    #     police.gov.sg/media-hub/news/2026/03/20260327_advisory_on_phishing_scams_involving_whatsapp_messages_impersonating_sg_post
+    #   - SPF, fraudulent Telegram messages on GSTV leading to account takeover (15 Jul 2026)
+    #     police.gov.sg/Media-Hub/News/2026/07/20260715_police_advisory_on_fraudulent_telegram_messages_on_gst_voucher
+    #   - SPF, fraudulent pop-up alerts impersonating SPF (24 Feb 2026)
+    #     police.gov.sg/Media-Hub/News/2026/02/20260224_police_advisory_on_phishing_scams_pop_up_alerts_impersonating_the_singapore_police_force
+    #   - SPF, phishing scams impersonating courier companies via iMessage (5 Aug 2026)
+    #     police.gov.sg/Media-Hub/News/2026/08/20260805_police_advisory_on_phishing_scams_impersonating_courier_companies_via_apple_imessage
+    BankQuestion(
+        technique=Technique.SCAM_LINK,
+        question=(
+            "A text says: 'Your $500 CDC Vouchers are ready. Claim now at "
+            "cdc-vouchers.sg-gov.info before they expire.' Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Scam",
+        explanation=(
+            "Genuine CDC voucher links only ever appear right after you claim "
+            "at go.gov.sg/cdcv. '.sg-gov.info' is a lookalike, not a real .gov.sg domain."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.SCAM_LINK,
+        question=(
+            "Right after you claim at go.gov.sg/cdcv, you get an SMS from "
+            "'gov.sg' with your one-time voucher link. It never asks for your "
+            "bank details. Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Legitimate",
+        explanation=(
+            "This matches GovTech's own guidance: real CDC links arrive only "
+            "after claiming at go.gov.sg/cdcv, from a 'gov.sg' sender, with no bank details asked."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.SCAM_LINK,
+        question=(
+            "A text warns of outstanding ERP charges and links to "
+            "lta-erp-payment.com, asking for your vehicle number and card details. "
+            "Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Scam",
+        explanation=(
+            "Police confirm real LTA notices only arrive as SMS from 'gov.sg', by "
+            "post, or in your OneMotoring account, never as a direct link to a card-payment page."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.SCAM_LINK,
+        question=(
+            "A WhatsApp message says your parcel could not be delivered due to "
+            "an invalid address, with a link to update it and pay a small redelivery fee. "
+            "Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Scam",
+        explanation=(
+            "Police confirm SingPost and couriers never send clickable payment "
+            "links over WhatsApp or iMessage. Check delivery status by logging into the courier's site directly."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.IMPERSONATED_AUTHORITY,
+        question=(
+            "A Telegram message with an official-looking graphic offers to check "
+            "your GST Voucher eligibility, then asks you to share the verification "
+            "code Telegram just texted you. Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Scam",
+        explanation=(
+            "Police documented this exact scam: sharing that code lets criminals "
+            "take over your Telegram account. No real eligibility check ever needs your verification code."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.IMPERSONATED_AUTHORITY,
+        question=(
+            "Your browser fills the screen with the police logo, claims you broke "
+            "the law, and demands your card details to pay a fine immediately. "
+            "Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Scam",
+        explanation=(
+            "Police confirm they cannot lock your computer, and a frozen "
+            "full-screen alert demanding card details is a known fake pop-up. Press Ctrl+Alt+Delete to close it."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.IMPERSONATED_AUTHORITY,
+        question=(
+            "A .gov.sg page shows your CDC voucher balance only after you log in "
+            "with Singpass, and never asks you to read out an OTP. Legitimate or scam?"
+        ),
+        options=("Legitimate", "Scam"),
+        correct_option="Legitimate",
+        explanation=(
+            "Singpass login on an official .gov.sg site is the standard, safe way "
+            "government e-services check who you are. It is a phishing page copying this look that is dangerous."
+        ),
+    ),
+    BankQuestion(
+        technique=Technique.SCAM_LINK,
+        question="Which of these is genuinely a Singapore government link?",
+        options=(
+            "go.gov.sg/cdcv",
+            "gov-sg-cdcvouchers.net/cdcv",
+            "cdcv.gov.sg.claim-now.com",
+            "singapore-gov.info/cdcv",
+        ),
+        correct_option="go.gov.sg/cdcv",
+        explanation=(
+            "Real government links end in '.gov.sg' itself. Anything where "
+            "'gov.sg' is only a prefix or subdomain of a different site is a lookalike, not the real thing."
         ),
     ),
 )

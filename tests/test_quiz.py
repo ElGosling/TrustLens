@@ -2,7 +2,12 @@ import random
 import unittest
 from datetime import datetime, timezone
 
-from app.literacy import GENERAL_BANK, Technique, classify_technique
+from app.literacy import (
+    GENERAL_BANK,
+    Technique,
+    bank_questions_for,
+    classify_technique,
+)
 from app.quiz import (
     MAX_EXPLANATION_LENGTH,
     MAX_OPTION_LENGTH,
@@ -104,6 +109,51 @@ class QuestionBankTests(unittest.TestCase):
 
         self.assertEqual(covered, set(Technique))
 
+    def test_every_question_in_the_bank_is_worded_uniquely(self) -> None:
+        questions = [item.question for item in GENERAL_BANK]
+
+        self.assertEqual(len(questions), len(set(questions)))
+
+
+class LegitimacyQuestionTests(unittest.TestCase):
+    """The 'is this real or a scam?' questions, checked for balance and grounding."""
+
+    def _legitimacy_questions(self):
+        return [item for item in GENERAL_BANK if set(item.options) == {"Legitimate", "Scam"}]
+
+    def test_the_bank_includes_legitimate_vs_scam_questions(self) -> None:
+        self.assertGreaterEqual(len(self._legitimacy_questions()), 5)
+
+    def test_the_answer_is_not_always_scam(self) -> None:
+        """A quiz that only ever answers 'Scam' trains guessing, not judgement."""
+        items = self._legitimacy_questions()
+
+        legitimate_count = sum(1 for item in items if item.correct_option == "Legitimate")
+
+        self.assertGreaterEqual(legitimate_count, 2)
+        self.assertLess(legitimate_count, len(items))
+
+    def test_legitimate_examples_cite_the_real_official_channel(self) -> None:
+        """A 'Legitimate' verdict must name the real, verifiable channel, not just assert trust."""
+        for item in self._legitimacy_questions():
+            if item.correct_option != "Legitimate":
+                continue
+            with self.subTest(question=item.question[:40]):
+                self.assertTrue(
+                    "gov.sg" in item.explanation.lower()
+                    or "singpass" in item.explanation.lower()
+                )
+
+    def test_scam_examples_cite_a_specific_tell_not_just_caution(self) -> None:
+        """Explanations must name what's wrong, not just say 'be careful'."""
+        vague_only = {"be careful", "stay safe", "always verify"}
+        for item in self._legitimacy_questions():
+            if item.correct_option != "Scam":
+                continue
+            with self.subTest(question=item.question[:40]):
+                self.assertGreater(len(item.explanation), 40)
+                self.assertNotIn(item.explanation.strip().lower(), vague_only)
+
 
 class BuildQuizTests(unittest.TestCase):
     def test_a_new_user_still_gets_a_full_quiz_from_the_bank(self) -> None:
@@ -149,7 +199,22 @@ class BuildQuizTests(unittest.TestCase):
 
         self.assertEqual(quiz.questions[0].technique, Technique.SCAM_LINK)
         self.assertEqual(quiz.questions[0].origin, ORIGIN_TARGETED)
-        self.assertEqual(quiz.questions[1].technique, Technique.OUTDATED_NEWS)
+        self.assertEqual(quiz.questions[1].technique, Technique.SCAM_LINK)
+
+    def test_the_next_ranked_technique_starts_only_once_the_top_one_is_exhausted(
+        self,
+    ) -> None:
+        scam_link_total = len(bank_questions_for(Technique.SCAM_LINK))
+        quiz = build_quiz(
+            technique_counts={"scam_link": 4, "outdated_news": 1},
+            question_count=scam_link_total + 1,
+            rng=random.Random(1),
+        )
+
+        self.assertTrue(
+            all(item.technique == Technique.SCAM_LINK for item in quiz.questions[:-1])
+        )
+        self.assertEqual(quiz.questions[-1].technique, Technique.OUTDATED_NEWS)
 
     def test_options_are_shuffled_so_the_answer_is_not_always_first(self) -> None:
         positions = {
