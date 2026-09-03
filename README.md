@@ -1,285 +1,179 @@
 # TrustLens
 
-TrustLens will help Telegram and WhatsApp users check suspicious text, images, videos, and voice notes. The current milestone is a deliberately small Telegram-to-GPT bot so the team can learn one boundary at a time.
+## Overview
 
-## MVP architecture
+False claims and lookalike-domain scams still travel through family chats and social feeds because checking them is slow: open a browser, guess which source is real, and hope the article is current. TrustLens is a **Telegram bot** (with a matching **Chrome extension on X**) that takes a pasted claim or forwarded link, searches only a reviewed allowlist of domains, and replies with a verdict, confidence, cited URLs, and a short explanation.
+
+**Problem it addresses.** People forward urgency-and-authority messages (PayNow “refunds”, parcel fees, fake agency notices) before anyone has checked them. Generic chatbots make this worse if they invent sources. TrustLens never lets the model browse or cite a URL that did not already pass local trusted-domain validation. If there is no approved evidence, the answer is **Unverified**, not a guess.
+
+**Key features**
+
+- **Evidence-gated fact check.** Text or `http(s)` links → Tavily search restricted to `config/trusted_sources.toml` → GPT Structured Outputs over numbered evidence only. Verdicts: True, False, Misleading, Satire, Unverified.
+- **Micro literacy `/quiz`.** A recap from *your* stored checks plus a curated bank, including “is this legitimate or a scam?” items grounded in named SPF / GovTech advisories — and some answers are **Legitimate**, so the quiz does not train “everything is a scam”.
+- **Recurring-scam `/escalate`.** On demand, clusters similar False/Misleading (and Unverified scam/impersonation) claims **across users** and writes a local harm brief (`data/escalations/`). One person repeating the same text does not count; ≥2 unique users in 14 days does. The Telegram reply includes unique-user counts. No user IDs in the file.
+- **Chrome extension (X).** A `?` badge on posts; click runs the same Python fact-check via `http://127.0.0.1:8000/check`. API keys stay on the machine, not in the browser.
+- **Public website.** Explainer for the product (`website/`).
+
+**How it stands out.** Same fact-check stack in chat and in-feed; the model cannot mint sources; literacy is personalised from real checks rather than a generic trivia pack; escalation looks for *spread*, which is what makes a scam worth a brief.
+
+Telegram is the MVP channel. Images, voice, video, and WhatsApp are not in this build — see [Improvements](#improvements).
+
+## Setup and run
+
+Work from the repository root (`TrustLens/`). The bot, the Chrome extension, and the website can run independently; they share `.env` keys where noted.
+
+### Dependencies
+
+| What | Why | Version |
+|------|-----|---------|
+| Python | Bot, fact-check API, escalation CLI | **3.11 or newer** (`pyproject.toml`) |
+| pip packages | `openai`, `pyTelegramBotAPI`, `tavily-python` | `pip install -e .` |
+| Node.js + npm | Public website only | Node **18+** recommended |
+| Google Chrome | Unpacked extension | Current stable |
+| Accounts / keys | Bot token and two API keys | Step 1 |
+
+No Docker, no PostgreSQL. SQLite is created automatically under `data/` on first bot run.
+
+### 1. Get the three secrets
+
+1. **Telegram bot token.** In Telegram, talk to [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token.
+2. **OpenAI API key.** [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Default model: `gpt-5.6-luna` (`OPENAI_MODEL` in `.env`); change it only if your account cannot use that model.
+3. **Tavily API key.** [tavily.com](https://tavily.com). Required for trusted-source search.
+
+### 2. Environment file
+
+```bash
+cp .env.example .env
+```
+
+Windows (PowerShell): `Copy-Item .env.example .env`
+
+Set at least:
 
 ```text
-Telegram / WhatsApp
-        |
-        v
-Channel adapters (receive and send messages)
-        |
-        v
-Fact-check workflow
-  1. extract text from message or media
-  2. identify the checkable claim
-  3. search only trusted sources
-  4. retrieve relevant evidence
-  5. ask the AI to produce a structured verdict
-        |
-        +--> PostgreSQL (users, checks, source records)
-        +--> pgvector (embeddings for retrieved evidence)
-        |
-        v
-Verified-card response in the user's preferred language
+TELEGRAM_BOT_TOKEN=...
+OPENAI_API_KEY=...
+TAVILY_API_KEY=...
 ```
 
-The service in `app/main.py` is the future entry point for webhook endpoints and internal workflow calls. Each channel adapter should translate a platform-specific message into one common internal format; the fact-check workflow should not need to know whether a message came from Telegram or WhatsApp.
+Do not commit `.env`.
 
-## Technology choices
+| Variable | Required? | Default | Used by |
+|----------|-----------|---------|---------|
+| `TELEGRAM_BOT_TOKEN` | Yes, for the bot | — | `python -m app.main` |
+| `OPENAI_API_KEY` | Yes | — | Bot and `python -m chrome_ext.api` |
+| `TAVILY_API_KEY` | Yes | — | Bot and Chrome bridge |
+| `OPENAI_MODEL` | No | `gpt-5.6-luna` | Same |
+| `TRUSTLENS_DB_PATH` | No | `data/trustlens.sqlite3` | Bot and `/escalate` |
+| `TRUSTLENS_QUIZ_QUESTIONS` | No | `5` | `/quiz` |
+| `TRUSTLENS_ESCALATE_WINDOW_DAYS` | No | `14` | `/escalate` |
+| `TRUSTLENS_ESCALATE_MIN_USERS` | No | `2` | `/escalate` |
+| `TRUSTLENS_ESCALATE_DIR` | No | `data/escalations` | `/escalate` |
 
-- **Python 3.11+**: approachable for a student team and well supported by AI, media, database, and bot libraries.
-- **pyTelegramBotAPI (current milestone)**: a lightweight Telegram client library. Long polling lets the bot run locally without exposing a public web address; move to webhooks when deploying.
-- **OpenAI Python SDK (current milestone)**: sends each text message through the Responses API and returns the response text. The code sets `store=False` and does not add web-search tools.
-- **FastAPI (when webhooks are added)**: a small, typed HTTP layer with automatic request validation and documentation. Add it when Telegram and WhatsApp need public webhook endpoints.
-- **WhatsApp Cloud API (later)**: Meta's official API, connected through a separate adapter so it cannot complicate the Telegram learning path.
-- **OpenAI API with structured JSON output (later)**: produces a verdict in a fixed schema, but must only summarize evidence retrieved by the system rather than invent sources.
-- **PostgreSQL + pgvector (later)**: use one database for user preferences, audit records, sources, and vector search. Add it only when checks need to be saved or evidence retrieval is real.
-- **Trusted-domain search (later)**: search results are filtered against a version-controlled allowlist before evidence reaches the model. Begin with a short list of primary sources and established fact-checkers.
+The Chrome bridge does **not** need `TELEGRAM_BOT_TOKEN`. The website needs no `.env`.
 
-Avoid a separate queue, cache, microservices, or a standalone vector database until actual traffic makes one necessary.
+### 3. Python virtual environment
 
-## Build order
+macOS / Linux:
 
-1. **Current step — Telegram text round trip:** receive a text message in Telegram, send it to GPT, and reply in the same Telegram chat.
-2. Define the claim, evidence, and verdict data models; save a check in PostgreSQL.
-3. Add trusted-source search and evidence retrieval for text claims.
-4. Add the AI verdict generator, citations, language preference, and verified-card formatting.
-5. Add media extraction (OCR, transcription, video frames), then WhatsApp.
-
-This order makes it possible to test and understand each boundary before the next one is added.
-
-## Current milestone: Telegram → GPT → reply
-
-```text
-Telegram user
-     |
-     v
-Receive text message
-     |
-     v
-Send text to GPT
-     |
-     v
-Reply in the same Telegram chat
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
 ```
 
-**Goal:** prove that one text message can travel through the full path from Telegram to GPT and back to the user.
-
-**Done when:** a user can send a normal text message to the development bot and receive GPT's response in the same chat.
-
-**Not included yet:** fact-check verdicts, web search, source links, user-language preferences, databases, images, voice notes, videos, WhatsApp, or shareable cards. Keeping these out of this milestone makes failures easier to understand: the problem will be either receiving Telegram messages, calling GPT, or sending the reply.
-
-## Milestone 2 progress: trusted-source search boundary
-
-The trusted-source registry is `config/trusted_sources.toml`. The search adapter sends its configured domains to Tavily as `include_domains`, then independently parses each returned URL and accepts only an exact configured domain or an explicitly approved subdomain. For example, allowing `bbc.com` accepts `news.bbc.com`, but rejects `fake-bbc.com` and `bbc.com.scam.net`.
-
-The accepted `EvidenceSource` objects preserve each source's title, URL, actual hostname, and result snippet. They are not connected to Telegram or GPT yet. The next increment will send only these accepted objects to GPT using Structured Outputs (JSON Schema), and will return a deterministic `Unverified` result when none are found.
-
-To prepare the real search integration, add a `TAVILY_API_KEY` to `.env` and reinstall packages:
-
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-```
-
-## Text fact-checking workflow
-
-This milestone keeps Telegram text input but changes the reply from general chat to evidence-based fact checking:
-
-```text
-Telegram text -> trusted-domain search -> local URL validation -> GPT verdict -> cited Telegram reply
-```
-
-`config/trusted_sources.toml` is the single source registry. `FactCheckService` returns `Unverified` without calling GPT when no approved evidence is found. When evidence is found, GPT receives only numbered claim evidence and returns source IDs; Python maps those IDs back to the original validated URLs before replying.
-
-### Add a trusted source
-
-1. Verify the organisation's ownership, editorial or evidence standards, correction practice, and a sample result URL.
-2. Add one `[[sources]]` entry to `config/trusted_sources.toml`, including its `id`, `name`, `domain`, category, tier, and a plain-language scope note.
-3. Set `include_subdomains = true` only if every real subdomain should be trusted. Leave it `false` for a deliberately narrow site such as `factcheck.afp.com`.
-4. Run the automated tests. No changes to the search, GPT, or Telegram code should be needed.
-
-## Micro Literacy: the `/quiz` recap
-
-The proposal's Micro Literacy feature turns each check into a lesson: the bot "compiles the specific misconceptions and techniques that the user personally forwarded in ... into a short, polished recap quiz", with streaks as the incentive to come back. This milestone implements that locally.
-
-```text
-Telegram message -> fact check -> SQLite (checks)
-                                     |
-                              /quiz  v
-                       build_quiz() -> Telegram quiz polls -> SQLite (answers) -> streak + recap
-```
-
-**What is stored.** Every incoming message is written to a local SQLite file (`data/trustlens.sqlite3` by default, overridable with `TRUSTLENS_DB_PATH`): the Telegram user ID, chat ID, message ID, the exact input text, the routed message kind and any forwarded URL, the verdict, confidence, explanation and cited sources, the reply that was sent, the error if the check failed, the round-trip latency, and a UTC timestamp. Quiz sessions, questions, and answers live in the same file. Nothing leaves the machine the bot runs on.
-
-**How a quiz is built.** `build_quiz()` reads only that user's rows. Up to three questions replay claims the user actually sent ("On 20 Aug you asked TrustLens about this: ... What was the verdict?"), with the stored explanation reused as the poll's hint. The rest come from a curated bank of manipulation-technique questions, ordered so the techniques that user meets most often are asked first. A brand-new user still gets a full quiz from the bank. Questions are assembled in Python rather than generated by a model, so a recap is reproducible, costs nothing, works when the OpenAI key is unavailable, and can never invent a verdict the user was not actually shown.
-
-**"Is this legitimate or a scam?"** A subset of the bank shows a realistic message and asks the user to classify it, rather than to explain a general technique. Each one is grounded in a dated, named [Singapore Police Force advisory](https://www.police.gov.sg/Advisories/Scams) or [GovTech guidance](https://www.tech.gov.sg/technews/which-sms-links-are-scams-and-which-are-not/) — CDC voucher phishing, LTA ERP-fee SMS scams, SingPost/courier redelivery scams, the 2026 GST Voucher Telegram account-takeover scam, and fake police pop-up alerts — cited by source and date in the comments above `GENERAL_BANK` in `literacy.py`. Any domain shown (e.g. `lta-erp-payment.com`) is invented for teaching, never a real site. About a third of these questions have "Legitimate" as the correct answer (a real CDC SMS from `gov.sg`, a Singpass login on an official `.gov.sg` page): a quiz that only ever answers "Scam" would train pattern-matching, not judgement, and would leave users unable to recognise what a genuine notice actually looks like.
-
-**How it is asked.** Each question is a native Telegram quiz poll ([`sendPoll`](https://core.telegram.org/bots/api#sendpoll) with `type="quiz"`), which renders the options, marks the right answer, shows the explanation behind the 💡 icon, and runs its own countdown. Three details matter:
-
-- `is_anonymous=False`, because a bot receives `poll_answer` updates only for non-anonymous polls, and the score has to be attributed to a user.
-- `open_period` (90 seconds), so an abandoned question closes itself; a timer scores it as missed and moves the quiz on.
-- The correct answer is sent as `correct_option_ids` on recent library versions and `correct_option_id` on older ones. `QuizRunner` inspects the installed `send_poll` signature and uses whichever exists.
-
-Question and option lengths are validated against Telegram's limits (300, 100, and 200 characters) in `QuizQuestion.__post_init__`, before a poll is ever sent.
-
-**Commands.** `/quiz` starts a recap, `/quizstop` ends one early, `/stats` shows checks, verdict breakdown, quiz accuracy, and streak. Finishing a quiz extends the streak once per Singapore-time day, so the incentive is to return tomorrow rather than to grind today.
-
-If the bot restarts mid-quiz the open session is abandoned; the next `/quiz` cancels it and starts fresh.
-
-## Run the current milestone
-
-1. Install Python 3.11 or newer.
-2. Create a Telegram bot with BotFather and copy its bot token.
-3. Create an OpenAI API key.
-4. Copy `.env.example` to `.env`, then fill in `TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, and `TAVILY_API_KEY`. Do not share or commit this file.
-5. Create a virtual environment and install the two project packages. These commands deliberately do **not** activate the environment, so they work even when PowerShell blocks scripts:
+Windows:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 ```
 
-6. Start the bot:
+`pip install -e .` installs the packages in `pyproject.toml`. Re-run it if you pull new Python dependencies.
+
+### 4. Run the Telegram bot
+
+```bash
+.venv/bin/python -m app.main
+```
 
 ```powershell
 .\.venv\Scripts\python.exe -m app.main
 ```
 
-Open your Telegram bot's chat and send a text message or forwarded link. It should reply in the same chat. Stop the bot with `Ctrl+C`.
+The terminal stays on long polling until `Ctrl+C` — that is expected. Only one process may poll the same token (Telegram error **409** otherwise).
 
-Run the automated check with:
+In Telegram, open your bot and:
+
+- Send a sentence or a forwarded `http(s)` link → verdict, confidence, sources.
+- `/quiz` → recap; `/quizstop` to abort; `/stats` for counts.
+- `/escalate` → writes `data/escalations/escalation-YYYYMMDD-HHMM.txt` and replies with unique-user counts. Needs **two different Telegram users** to have checked a similar False/Misleading (or Unverified scam) claim in the last 14 days.
+
+Without Telegram:
+
+```bash
+.venv/bin/python -m app.escalate
+```
+
+### 5. Run the Chrome extension (X)
+
+Needs steps 2–3. The Telegram bot does not have to be running.
+
+1. From the repo root, start the bridge and leave it running (`http://127.0.0.1:8000/check`):
+
+```bash
+.venv/bin/python -m chrome_ext.api
+```
+
+```powershell
+.\.venv\Scripts\python.exe -m chrome_ext.api
+```
+
+2. Chrome: menu → **Extensions** → **Manage extensions**.
+3. Turn on **Developer mode** → **Load unpacked**.
+4. Select the `chrome_ext` folder.
+5. Open **X** (`x.com`), click the `?` badge on a post.
+
+If the panel says the service is unavailable, the bridge in step 1 is not running.
+
+### 6. Run the public website
+
+Node.js 18+ and npm. No API keys.
+
+```bash
+cd website
+npm install
+npm run dev
+```
+
+Open the URL Vite prints (usually http://localhost:5173). Production: `npm run build` → `website/dist/`.
+
+### 7. Tests (optional)
+
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests
 ```
 
-## Application modules (`app/`)
+No API keys required.
 
-Every Python module under `app/` and what it does. Read these in roughly this order when onboarding.
+### Folders you will use
 
-### Entry point
+| Path | What it is for |
+|------|----------------|
+| `.env.example` | Template for secrets. Copy to `.env`. |
+| `app/` | Telegram bot (`python -m app.main`) and escalation CLI (`python -m app.escalate`). |
+| `chrome_ext/` | Load unpacked, then run `python -m chrome_ext.api`. |
+| `website/` | `npm install` / `npm run dev`. |
+| `config/trusted_sources.toml` | Domains allowed as evidence. |
+| `data/` | Created on first run: SQLite + `escalations/` txt files. Gitignored. |
 
-| File | Purpose |
-|------|---------|
-| `main.py` | Loads settings and the trusted-source registry, wires search, article fetch, GPT, and the fact-check service, opens the local SQLite store, creates the Telegram bot, clears any webhook, publishes the command menu, and starts long polling. Also validates at startup that `trusted_domains.py` is not an outdated partial copy. |
+## Improvements
 
-### Configuration
+Not in the MVP:
 
-| File | Purpose |
-|------|---------|
-| `settings.py` | Loads `.env`, validates required secrets (`TELEGRAM_BOT_TOKEN`, `OPENAI_API_KEY`, `TAVILY_API_KEY`), and exposes the OpenAI model name, the SQLite path (`TRUSTLENS_DB_PATH`), and the quiz length (`TRUSTLENS_QUIZ_QUESTIONS`) with sensible defaults. |
-
-### Telegram adapter
-
-| File | Purpose |
-|------|---------|
-| `telegram_bot.py` | Thin pyTelegramBotAPI wrapper. Registers the `/start`, `/help`, `/quiz`, `/quizstop`, and `/stats` commands before the catch-all text handler, passes `message.text` to the fact-check responder, records every check in SQLite, forwards `poll_answer` updates to the quiz runner, and replies in the same chat. Keeps Telegram-specific code separate from search and GPT logic. |
-
-### Storage and micro literacy
-
-| File | Purpose |
-|------|---------|
-| `storage.py` | The local SQLite repository: users, checks (input, verdict, sources, technique, latency, timestamps), quiz sessions, questions, answers, and daily streaks. Thread-safe, because message handlers run on worker threads. |
-| `literacy.py` | The manipulation-technique taxonomy, the keyword classifier that tags each check with one, and the curated question bank that teaches each technique. |
-| `quiz.py` | Turns a user's stored checks and technique counts into a `Quiz`: verdict-recall questions from their own history plus targeted bank questions, validated against Telegram's poll limits. |
-| `quiz_session.py` | `QuizRunner`: sends one quiz poll at a time, scores `poll_answer` updates, times out unanswered questions, and closes the session with a streak update and per-technique tips. |
-
-### Message routing
-
-| File | Purpose |
-|------|---------|
-| `message_input.py` | Parses incoming text for HTTP(S) URLs and optional user notes. Routes each message as plain text, a trusted whitelisted URL, or an untrusted URL so the fact-check service can choose the right evidence path. |
-
-### Fact-check orchestration
-
-| File | Purpose |
-|------|---------|
-| `fact_check.py` | Central workflow coordinator. Plain text → trusted search → GPT verdict. Trusted URLs → fetch article (or search fallback) → optional corroboration → GPT. Untrusted URLs → extract claim from page → standard trusted search. Returns formatted Telegram replies without changing the plain-text path when no URL is present. |
-
-### Trusted sources and search
-
-| File | Purpose |
-|------|---------|
-| `trusted_domains.py` | Loads `config/trusted_sources.toml` and enforces hostname policy: exact domain or approved subdomain only. Provides helpers for official-news categories, primary-event domains, and URL trust checks used by search and fetch code. |
-| `web_search.py` | Tavily search adapter with defense in depth. Runs primary-event, trusted-domain, and web-wide official-news passes; filters results locally; deduplicates URLs; applies relevance rules. Exposes `search(claim)` for text claims and `search_for_url(url)` when direct article fetch fails. |
-| `search_queries.py` | Expands a user claim into multiple Tavily queries (entity hints, registry primary-event sources, Singapore-focused terms) so search is less dependent on the exact wording of the message. |
-| `url_search.py` | Builds URL-targeted search queries from a forwarded link (full URL, path slug, `site:domain` variants) and derives a checkable claim from search snippets when article extract is unavailable. |
-| `claim_terms.py` | Shared tokenisation for claims: strips generic words like “championship” and “hosting” so relevance checks focus on distinctive terms. Used by search filtering and query expansion. |
-
-### Article fetch (forwarded links)
-
-| File | Purpose |
-|------|---------|
-| `article_fetcher.py` | Reads a specific URL through Tavily `extract` when the user forwards a link. Returns title and body for trusted articles. Used as primary evidence before corroborating search runs. |
-| `url_claims.py` | Converts a fetched article into an `EvidenceSource` and builds the claim string GPT should assess (from headline, lede, or the user’s accompanying note such as “Is this true?”). |
-
-### Data models
-
-| File | Purpose |
-|------|---------|
-| `evidence.py` | Defines `EvidenceSource`: title, URL, hostname, and snippet for each search or fetch result that passed local trusted-domain validation. |
-| `verdict.py` | Defines `Verdict` labels (`True`, `False`, `Misleading`, `Satire`, `Unverified`) and `FactCheckResult` (verdict, confidence, explanation, cited sources). |
-
-### AI and user-facing output
-
-| File | Purpose |
-|------|---------|
-| `gpt_responder.py` | Calls the OpenAI Responses API with structured JSON output. Sends only numbered evidence records; maps model-selected source IDs back to validated URLs; caps confidence for `Unverified` results. Does not browse or use background knowledge. |
-| `response_formatter.py` | Renders `FactCheckResult` as Telegram HTML: verdict symbol, confidence label, explanation, and clickable source links with untrusted text escaped. |
-
-### Debugging (temporary)
-
-| File | Purpose |
-|------|---------|
-| `fetch_debug.py` | Diagnostic logging for Straits Times URL fetches: direct HTTP status and body preview, plus Tavily extract metadata. Remove after paywall/JS-shell issues are resolved. |
-
-### Package marker
-
-| File | Purpose |
-|------|---------|
-| `__init__.py` | Marks `app` as a Python package. |
-
-### How the modules connect
-
-```text
-telegram_bot.py --- /quiz ---> quiz_session.py ---> quiz.py ---> literacy.py
-       |                            |                  ^
-       |                            +---> storage.py <--+  (SQLite: checks, quizzes)
-       |                                     ^
-       |            every checked message ---+
-       v
-fact_check.py  <--- message_input.py (URL vs text routing)
-       |
-       +-- text claim -----> web_search.py ---> search_queries.py
-       |                         ^                  claim_terms.py
-       |                         |                  trusted_domains.py
-       |
-       +-- trusted URL ---> article_fetcher.py
-       |       | fail              |
-       |       v                   v
-       |   url_search.py ----> web_search.py.search_for_url()
-       |       |
-       |       +--> url_claims.py
-       |
-       +-- untrusted URL -> article_fetcher.py -> url_claims.py -> web_search.py
-       |
-       v
-gpt_responder.py  (uses evidence.py, verdict.py)
-       |
-       v
-response_formatter.py
-```
-
-`main.py` constructs all of the above. `settings.py` and `trusted_domains.py` are loaded first.
-
-## Other project files
-
-- `config/trusted_sources.toml` — reviewed source registry (domains, categories, tiers, scope notes).
-- `tests/` — unit tests for settings, search, GPT request shape, URL routing, fact-check flows, SQLite storage, quiz construction, and the quiz runner.
-- `data/` — the local SQLite database, created on first run and excluded from Git.
-- `pyproject.toml` — project metadata, Python version, and runtime dependencies.
-- `.env.example` — required secret names, the configurable model, the SQLite path, and the quiz length, without storing values.
-- `.gitignore` — excludes virtual environments, caches, secrets, the local database, and egg-info from Git.
+- **WhatsApp.** A Cloud API adapter for the same fact-check workflow. MVP channel is Telegram only.
+- **Chrome extension.** Same badge and click-to-check on social platforms other than X.
+- **Scam escalation.** Connect `/escalate` to official hotlines (for example ScamShield) so a cluster that crosses the spread threshold can be sent automatically, not only written to a local file.
